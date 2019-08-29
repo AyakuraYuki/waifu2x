@@ -53,8 +53,9 @@ else
    end
    pcall(load_cudnn)
 
-   function w2nn.load_model(model_path, force_cudnn)
-      local model = torch.load(model_path, "ascii")
+   function w2nn.load_model(model_path, force_cudnn, mode)
+      mode = mode or "ascii"
+      local model = torch.load(model_path, mode)
       if force_cudnn then
 	 model = cudnn.convert(model, cudnn)
       end
@@ -75,5 +76,15 @@ else
    require 'InplaceClip01'
    require 'L1Criterion'
    require 'ShakeShakeTable'
+   require 'PrintTable'
+   require 'Print'
+   require 'AuxiliaryLossTable'
+   require 'AuxiliaryLossCriterion'
+   require 'GradWeight'
+   require 'RandomBinaryConvolution'
+   require 'LBPCriterion'
+   require 'EdgeFilter'
+   require 'ScaleTable'
    return w2nn
 end
+

@@ -63,16 +63,24 @@ local function crop_if_large_pair(x, y, max_size)
       return x, y
    end
 end
-local function padding_x(x, pad)
+local function padding_x(x, pad, x_zero)
    if pad > 0 then
-      x = iproc.padding(x, pad, pad, pad, pad)
+      if x_zero then
+	 x = iproc.zero_padding(x, pad, pad, pad, pad)
+      else
+	 x = iproc.padding(x, pad, pad, pad, pad)
+      end
    end
    return x
 end
-local function padding_xy(x, y, pad, y_zero)
+local function padding_xy(x, y, pad, x_zero, y_zero)
    local scale = y:size(2) / x:size(2)
    if pad > 0 then
-      x = iproc.padding(x, pad, pad, pad, pad)
+      if x_zero then
+	 x = iproc.zero_padding(x, pad, pad, pad, pad)
+      else
+	 x = iproc.padding(x, pad, pad, pad, pad)
+      end
       if y_zero then
 	 y = iproc.zero_padding(y, pad * scale, pad * scale, pad * scale, pad * scale)
       else
@@ -87,6 +95,7 @@ local function load_images(list)
    local x = {}
    local skip_notice = false
    for i = 1, #csv do
+      local filters = nil
       local filename = csv[i][1]
       local csv_meta = csv[i][2]
       if csv_meta and csv_meta:len() > 0 then
@@ -127,7 +136,7 @@ local function load_images(list)
 		     xx = alpha_util.fill(xx, meta2.alpha, alpha_color)
 		  end
 		  xx, yy = crop_if_large_pair(xx, yy, settings.max_training_image_size)
-		  xx, yy = padding_xy(xx, yy, settings.padding, settings.padding_y_zero)
+		  xx, yy = padding_xy(xx, yy, settings.padding, settings.padding_x_zero, settings.padding_y_zero)
 		  if settings.grayscale then
 		     xx = iproc.rgb2y(xx)
 		     yy = iproc.rgb2y(yy)
@@ -140,7 +149,7 @@ local function load_images(list)
 	    else
 	       im = crop_if_large(im, settings.max_training_image_size)
 	       im = iproc.crop_mod4(im)
-	       im = padding_x(im, settings.padding)
+	       im = padding_x(im, settings.padding, settings.padding_x_zero)
 	       local scale = 1.0
 	       if settings.random_half_rate > 0.0 then
 		  scale = 2.0

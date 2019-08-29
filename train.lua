@@ -215,6 +215,17 @@ local function transform_pool_init(has_resize, offset)
 						    settings.crop_size, offset,
 						    n, conf)
 	    elseif settings.method == "user" then
+	       local random_erasing_rate = 0
+	       local random_erasing_n = 0
+	       local random_erasing_rect_min = 0
+	       local random_erasing_rect_max = 0
+	       if is_validation then
+	       else
+		  random_erasing_rate = settings.random_erasing_rate
+		  random_erasing_n = settings.random_erasing_n
+		  random_erasing_rect_min = settings.random_erasing_rect_min
+		  random_erasing_rect_max = settings.random_erasing_rect_max
+	       end
 	       local conf = tablex.update({
 		     gcn = settings.gcn,
 		     max_size = settings.max_size,
@@ -230,6 +241,10 @@ local function transform_pool_init(has_resize, offset)
 		     random_pairwise_negate_x_rate = settings.random_pairwise_negate_x_rate,
 		     pairwise_y_binary = settings.pairwise_y_binary,
 		     pairwise_flip = settings.pairwise_flip,
+		     random_erasing_rate = random_erasing_rate,
+		     random_erasing_n = random_erasing_n,
+		     random_erasing_rect_min = random_erasing_rect_min,
+		     random_erasing_rect_max = random_erasing_rect_max,
 		     rgb = (settings.color == "rgb")}, meta)
 	       return pairwise_transform.user(x, y,
 					      settings.crop_size, offset,
@@ -350,6 +365,53 @@ local function create_criterion(model)
       local bce = nn.BCECriterion()
       bce.sizeAverage = true
       return bce:cuda()
+   elseif settings.loss == "aux_bce" then
+      local aux = w2nn.AuxiliaryLossCriterion(nn.BCECriterion)
+      aux.sizeAverage = true
+      return aux:cuda()
+   elseif settings.loss == "aux_huber" then
+      local args = {}
+      if reconstruct.is_rgb(model) then
+	 local offset = reconstruct.offset_size(model)
+	 local output_w = settings.crop_size - offset * 2
+	 local weight = torch.Tensor(3, output_w * output_w)
+	 weight[1]:fill(0.29891 * 3) -- R
+	 weight[2]:fill(0.58661 * 3) -- G
+	 weight[3]:fill(0.11448 * 3) -- B
+	 args = {weight, 0.1, {0.0, 1.0}}
+      else
+	 local offset = reconstruct.offset_size(model)
+	 local output_w = settings.crop_size - offset * 2
+	 local weight = torch.Tensor(1, output_w * output_w)
+	 weight[1]:fill(1.0)
+	 args = {weight, 0.1, {0.0, 1.0}}
+      end
+      local aux = w2nn.AuxiliaryLossCriterion(w2nn.ClippedWeightedHuberCriterion, args)
+      return aux:cuda()
+   elseif settings.loss == "lbp" then
+      if reconstruct.is_rgb(model) then
+	 return w2nn.LBPCriterion(3, 128):cuda()
+      else
+	 return w2nn.LBPCriterion(1, 128):cuda()
+      end
+   elseif settings.loss == "lbp2" then
+      if reconstruct.is_rgb(model) then
+	 return w2nn.LBPCriterion(3, 128, 3, 2):cuda()
+      else
+	 return w2nn.LBPCriterion(1, 128, 3, 2):cuda()
+      end
+   elseif settings.loss == "aux_lbp" then
+      if reconstruct.is_rgb(model) then
+	 return w2nn.AuxiliaryLossCriterion(w2nn.LBPCriterion, {3, 128}):cuda()
+      else
+	 return w2nn.AuxiliaryLossCriterion(w2nn.LBPCriterion, {1, 128}):cuda()
+      end
+   elseif settings.loss == "aux_lbp2" then
+      if reconstruct.is_rgb(model) then
+	 return w2nn.AuxiliaryLossCriterion(w2nn.LBPCriterion, {3, 128, 3, 2}):cuda()
+      else
+	 return w2nn.AuxiliaryLossCriterion(w2nn.LBPCriterion, {1, 128, 3, 2}):cuda()
+      end
    else
       error("unsupported loss .." .. settings.loss)
    end
@@ -456,9 +518,24 @@ local function train()
    local train_x, valid_x = split_data(x, math.max(math.floor(settings.validation_rate * #x), 1))
    local hist_train = {}
    local hist_valid = {}
+   local adam_config = {
+      xLearningRate = settings.learning_rate,
+      xBatchSize = settings.batch_size,
+      xLearningRateDecay = settings.learning_rate_decay,
+      xInstanceLoss = (settings.oracle_rate > 0)
+   }
    local model
    if settings.resume:len() > 0 then
       model = torch.load(settings.resume, "ascii")
+      adam_config.xEvalCount = math.floor((#train_x * settings.patches) / settings.batch_size) * settings.batch_size * settings.inner_epoch * (settings.resume_epoch - 1)
+      print(string.format("set eval count = %d", adam_config.xEvalCount))
+      if adam_config.xEvalCount > 0 then
+	 adam_config.learningRate = adam_config.xLearningRate / (1 + adam_config.xEvalCount * adam_config.xLearningRateDecay)
+	 print(string.format("set learning rate = %E", adam_config.learningRate))
+      else
+	 adam_config.xEvalCount = 0
+	 adam_config.learningRate = adam_config.xLearningRate
+      end
    else
       if stringx.endswith(settings.model, ".lua") then
 	 local create_model = dofile(settings.model)
@@ -485,13 +562,12 @@ local function train()
    transform_pool_init(reconstruct.has_resize(model), offset)
 
    local criterion = create_criterion(model)
-   local eval_metric = w2nn.ClippedMSECriterion(0, 1):cuda()
-   local adam_config = {
-      xLearningRate = settings.learning_rate,
-      xBatchSize = settings.batch_size,
-      xLearningRateDecay = settings.learning_rate_decay,
-      xInstanceLoss = (settings.oracle_rate > 0)
-   }
+   local eval_metric = nil
+   if settings.loss:find("aux_") ~= nil then
+      eval_metric = w2nn.AuxiliaryLossCriterion(w2nn.ClippedMSECriterion):cuda()
+   else
+      eval_metric = w2nn.ClippedMSECriterion():cuda()
+   end
    local ch = nil
    if settings.color == "y" then
       ch = 1
@@ -521,7 +597,7 @@ local function train()
    end
    local instance_loss = nil
    local pmodel = w2nn.data_parallel(model, settings.gpu)
-   for epoch = 1, settings.epoch do
+   for epoch = settings.resume_epoch, settings.epoch do
       pmodel:training()
       print("# " .. epoch)
       if adam_config.learningRate then

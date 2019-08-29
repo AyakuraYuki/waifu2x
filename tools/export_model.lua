@@ -5,13 +5,19 @@ package.path = path.join(path.dirname(__FILE__), "..", "lib", "?.lua;") .. packa
 require 'w2nn'
 local cjson = require "cjson"
 
-local function meta_data(model)
+local function meta_data(model, model_path)
    local meta = {}
    for k, v in pairs(model) do
       if k:match("w2nn_") then
 	 meta[k:gsub("w2nn_", "")] = v
       end
    end
+
+   modtime = file.modified_time(model_path)
+   utc_date = Date('utc')
+   utc_date:set(modtime)
+   meta["created_at"] = tostring(utc_date)
+
    return meta
 end
 local function includes(s, a)
@@ -31,17 +37,29 @@ local function get_bias(mod)
    end
 end
 local function export_weight(jmodules, seq)
-   local targets = {"nn.SpatialConvolutionMM",
-		    "cudnn.SpatialConvolution",
-		    "nn.SpatialFullConvolution",
-		    "cudnn.SpatialFullConvolution"
+   local convolutions = {"nn.SpatialConvolutionMM",
+			 "cudnn.SpatialConvolution",
+			 "cudnn.SpatialDilatedConvolution",
+			 "nn.SpatialFullConvolution",
+			 "nn.SpatialDilatedConvolution",
+			 "cudnn.SpatialFullConvolution"
    }
    for k = 1, #seq.modules do
       local mod = seq.modules[k]
       local name = torch.typename(mod)
       if name == "nn.Sequential" or name == "nn.ConcatTable" then
 	 export_weight(jmodules, mod)
-      elseif includes(name, targets) then
+      elseif name == "nn.Linear" then
+	 local weight = torch.totable(mod.weight:float())
+	 local jmod = {
+	    class_name = name,
+	    nInputPlane = mod.weight:size(2),
+	    nOutputPlane = mod.weight:size(1),
+	    bias = torch.totable(get_bias(mod)),
+	    weight = weight
+	 }
+	 table.insert(jmodules, jmod)
+      elseif includes(name, convolutions) then
 	 local weight = mod.weight:float()
 	 if name:match("FullConvolution") then
 	    weight = torch.totable(weight:reshape(mod.nInputPlane, mod.nOutputPlane, mod.kH, mod.kW))
@@ -56,25 +74,27 @@ local function export_weight(jmodules, seq)
 	    dW = mod.dW,
 	    padW = mod.padW,
 	    padH = mod.padH,
+	    dilationW = mod.dilationW,
+	    dilationH = mod.dilationH,
 	    nInputPlane = mod.nInputPlane,
 	    nOutputPlane = mod.nOutputPlane,
 	    bias = torch.totable(get_bias(mod)),
 	    weight = weight
 	 }
-	 if first_layer then
-	    first_layer = false
-	    jmod.model_config = model_config
-	 end
 	 table.insert(jmodules, jmod)
       end
    end
 end
-local function export(model, output)
+local function export(model, model_path, output)
    local jmodules = {}
-   local model_config = meta_data(model)
+   local model_config = meta_data(model, model_path)
    local first_layer = true
 
+   print(model_config)
+   print(model)
+
    export_weight(jmodules, model)
+   jmodules[1]["model_config"] = model_config
 
    local fp = io.open(output, "w")
    if not fp then
@@ -98,4 +118,4 @@ if not path.isfile(opt.i) then
    os.exit(-1)
 end
 local model = torch.load(opt.i, opt.iformat)
-export(model, opt.o)
+export(model, opt.i, opt.o)

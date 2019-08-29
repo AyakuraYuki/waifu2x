@@ -37,7 +37,7 @@ cmd:option("-save_all", 0, 'group -save_info, -save_image and -save_baseline_ima
 cmd:option("-thread", -1, 'number of CPU threads')
 cmd:option("-tta", 0, 'use tta')
 cmd:option("-tta_level", 8, 'tta level')
-cmd:option("-crop_size", 128, 'patch size per process')
+cmd:option("-crop_size", 256, 'patch size per process')
 cmd:option("-batch_size", 1, 'batch_size')
 cmd:option("-force_cudnn", 0, 'use cuDNN backend')
 cmd:option("-yuv420", 0, 'use yuv420 jpeg')
@@ -221,7 +221,12 @@ local function create_metric(metric)
 	       local num_a = ba:sum()
 	       local num_b = bb:sum()
 	       local a_and_b  = ba:cmul(bb):sum()
-	       return (a_and_b / (num_a + num_b - a_and_b))
+	       local abab = (num_a + num_b - a_and_b)
+	       if abab > 0 then
+		  return (a_and_b / abab)
+	       else
+		  return 1
+	       end
 	 end}
       else
 	 error("unknown metric: " .. metric)
@@ -620,10 +625,10 @@ local function load_data_from_dir(test_dir)
 	 table.insert(test_x, {y = iproc.crop_mod4(img),
 			       basename = base})
       end
-      if opt.show_progress then
-	 xlua.progress(i, #files)
-      end
       if i % 10 == 0 then
+	 if opt.show_progress then
+	    xlua.progress(i, #files)
+	 end
 	 collectgarbage()
       end
    end
@@ -641,10 +646,10 @@ local function load_data_from_file(test_file)
 	 table.insert(test_x, {y = iproc.crop_mod4(img),
 			       basename = base})
       end
-      if opt.show_progress then
-	 xlua.progress(i, #files)
-      end
       if i % 10 == 0 then
+	 if opt.show_progress then
+	    xlua.progress(i, #files)
+	 end
 	 collectgarbage()
       end
    end
@@ -699,10 +704,10 @@ local function load_user_data(y_dir, y_file, x_dir, x_file)
 			     x = x,
 			     basename = key})
       end
-      if opt.show_progress then
-	 xlua.progress(i, #y_files)
-      end
       if i % 10 == 0 then
+	 if opt.show_progress then
+	    xlua.progress(i, #y_files)
+	 end
 	 collectgarbage()
       end
    end

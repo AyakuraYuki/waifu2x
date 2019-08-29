@@ -21,6 +21,13 @@ Urban100: https://github.com/jbhuang0604/SelfExSR
 | BSD100        | 29.558        | 31.427        | 31.640           | 31.749           | 31.847             |
 | Urban100      | 26.852        | 30.057        | 30.477           | 30.759           | 31.016             |
 
+### 2x - benchmark time (sec)
+
+| Dataset/Model | vgg\_7/photo  | upconv\_7/photo  | upconv\_7l/photo | resnet_14l/photo |
+|---------------|---------------|------------------|------------------|--------------------|
+| BSD100        | 4.057         | 2.509            | 4.947            | 6.86               |
+| Urban100      | 16.349        | 7.083            | 14.178           | 27.87              |
+
 ### 2x with TTA - PSNR 
 
 Note: TTA is an ensemble technique that is supported by waifu2x. TTA method is 8x slower than non TTA method but it improves PSNR (~+0.1 on photo, ~+0.4 on art).
@@ -30,14 +37,7 @@ Note: TTA is an ensemble technique that is supported by waifu2x. TTA method is 8
 | BSD100        | 29.558        | 31.474        | 31.705           | 31.812           | 31.915             |
 | Urban100      | 26.852        | 30.140        | 30.599           | 30.868           | 31.162             |
 
-### 2x - benchmark elapsed time (sec)
-
-| Dataset/Model | vgg\_7/photo  | upconv\_7/photo  | upconv\_7l/photo | resnet_14l/photo |
-|---------------|---------------|------------------|------------------|--------------------|
-| BSD100        | 4.057         | 2.509            | 4.947            | 6.86               |
-| Urban100      | 16.349        | 7.083            | 14.178           | 27.87              |
-
-### 2x with TTA - benchmark elapsed time (sec)
+### 2x with TTA - benchmark time (sec)
 
 | Dataset/Model | vgg\_7/photo  | upconv\_7/photo  | upconv\_7l/photo | resnet_14l/photo |
 |---------------|---------------|------------------|------------------|--------------------|
@@ -46,34 +46,38 @@ Note: TTA is an ensemble technique that is supported by waifu2x. TTA method is 8
 
 ## Art
 
-command: 
-`th tools/benchmark.lua -dir <dataset_dir> -model1_dir <model_dir> -method scale -filter Lanczos -color y -range_bug 1 -tta <0|1> -force_cudnn 1`
+command: See `appendix/benchmark.sh`
 
 ### Dataset
 
-art_test: This dataset contains 85 various fan-arts. Sorry, This dataset is private. 
+art_test: This dataset contains 84 various fan-arts. Sorry, This dataset is private.
 
 ### 2x - PSNR 
 
-| Dataset/Model | Bicubic       | vgg\_7/art  | upconv\_7/art  | upconv\_7l/art | 
-|---------------|---------------|-------------|----------------|----------------|
-| art_test      | 31.022        | 37.495      | 38.330         | 39.140         |
+| Filter/Model   | Bicubic       | vgg\_7/art  | upconv\_7/art  | cunet/art      | 
+|----------------|---------------|-------------|----------------|----------------|
+| Lanczos        | 31.022        | 37.495      | 38.330         | 39.886         |
+| Sinc           | 30.947        | 37.722      | 38.538         | 40.312         |
+| Catrom(Bicubic)| 30.663        | 37.278      | 37.189         | 40.184         |
+| Box            | 30.891        | 37.709      | 38.410         | 39.672         |
+
+### 2x - benchmark time (sec)
+
+| Dataset/Model | vgg\_7/art  | upconv\_7/art  | cunet/art | 
+|---------------|-------------|----------------|----------------|
+| art_test      | 24.153      | 10.794         | 24.222         |
 
 ### 2x with TTA - PSNR 
 
-| Dataset/Model | Bicubic       | vgg\_7/art  | upconv\_7/art  | upconv\_7l/art | 
-|---------------|---------------|-------------|----------------|----------------|
-| art_test      | 31.022        | 37.777      | 38.677         | 39.510         |
+| Filter/Model   | Bicubic       | vgg\_7/art  | upconv\_7/art  | cunet/art      | 
+|----------------|---------------|-------------|----------------|----------------|
+| Lanczos        | 31.022        | 37.777      | 38.677         | 40.289         |
+| Sinc           | 30.947        | 38.005      | 38.883         | 40.707         |
+| Catrom(Bicubic)| 30.663        | 37.498      | 37.417         | 40.592         |
+| Box            | 30.891        | 38.032      | 38.768         | 40.032         |
 
-### 2x - benchmark elapsed time (sec)
+### 2x with TTA - benchmark time (sec)
 
-| Dataset/Model | vgg\_7/art  | upconv\_7/art  | upconv\_7l/art | 
+| Dataset/Model | vgg\_7/art  | upconv\_7/art  | cunet/art       | 
 |---------------|-------------|----------------|----------------|
-| art_test      | 20.681      | 7.683          | 17.667         |
-
-### 2x with TTA - benchmark elapsed time (sec)
-
-| Dataset/Model | vgg\_7/art  | upconv\_7/art  | upconv\_7l/art | 
-|---------------|-------------|----------------|----------------|
-| art_test      | 174.674     | 77.716         | 163.932        |
-
+| art_test      | 207.217     | 99.151         | 211.520        |
